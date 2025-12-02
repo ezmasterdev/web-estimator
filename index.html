@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>✨ Professional Web Dev Price Estimator</title>
+
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+<style>
+body { 
+    background-color: #f4f7f6; 
+    padding: 40px; 
+    min-height: 100vh;
+}
+.calculator { 
+    max-width: 1100px; 
+    margin: auto; 
+    background-color: #fff; 
+    padding: 30px; 
+    border-radius: 12px; 
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); 
+}
+.card-input { border-left: 5px solid #007bff; }
+.result-box { 
+    font-size: 2rem; 
+    font-weight: bold; 
+    text-align: center; 
+    padding: 20px; 
+    background-color: #d1ecf1; 
+    color: #0c5460; 
+    border-radius: 8px; 
+    border: 1px solid #bee5eb; 
+    margin-bottom: 20px;
+}
+canvas { 
+    max-height: 350px; 
+    width: 100%; 
+}
+#initialPlaceholder {
+    min-height: 350px;
+    text-align: center;
+    padding: 40px;
+    border: 2px dashed #ccc;
+    border-radius: 8px;
+    color: #6c757d;
+    background-color: #e9ecef;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+}
+.chart-legend-item {
+    display: flex;
+    align-items: center;
+    margin-bottom: 5px;
+}
+.chart-legend-color {
+    display: inline-block;
+    width: 15px;
+    height: 15px;
+    margin-right: 8px;
+    border-radius: 3px;
+}
+.desc {
+    font-size: 0.85rem;
+    color: #6c757d;
+    margin-top: 3px;
+}
+</style>
+</head>
+
+<body>
+
+<div class="calculator">
+    <h1 class="mb-4 text-center text-primary">Ezmasterdev Web Development Price Estimator 💰</h1>
+    <p class="text-center text-muted mb-5">Select your project type and features to get an estimated cost breakdown.</p>
+
+    <div class="row mb-4">
+        <!-- Project Scope -->
+        <div class="col-md-5 mx-auto">
+            <div class="card card-input p-4 text-center">
+                <h3 class="card-title text-primary"><i class="bi bi-gear-fill"></i> Project Scope</h3>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Site Type</label>
+                    <p class="text-muted small">Choose whether the project is static or dynamic.</p>
+                    <select class="form-select w-75 mx-auto" id="siteType">
+                        <option value="" disabled selected>Select site type</option>
+                        <option value="static">Static</option>
+                        <option value="dynamic">Dynamic</option>
+                    </select>
+                </div>
+
+                <div class="mb-3" id="numPagesContainer" style="display:none;">
+                    <label class="form-label fw-bold">Number of Pages</label>
+                    <p class="text-muted small">Total number of unique pages the website will have.</p>
+                    <input type="number" id="numPages" class="form-control w-50 mx-auto text-center" min="1" value="5">
+                </div>
+            </div>
+        </div>
+
+        <!-- Dynamic Features -->
+        <div class="col-md-7 mx-auto" id="dynamicInputs" style="display:none;">
+            <div class="card card-input p-4 text-center">
+                <h3 class="card-title text-success"><i class="bi bi-server"></i> Dynamic Features</h3>
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label fw-bold">Database Tables</label>
+                        <input type="number" id="numTables" class="form-control w-50 mx-auto text-center" min="1" value="5">
+                        <p class="text-muted small">Number of data structures your system will store (users, orders, etc.)</p>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label fw-bold">User Roles</label>
+                        <input type="number" id="numRoles" class="form-control w-50 mx-auto text-center" min="1" value="1">
+                        <p class="text-muted small">Different types of users with unique permissions.</p>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label fw-bold">External Notifications</label>
+                        <input type="number" id="numExternalNotifs" class="form-control w-50 mx-auto text-center" min="0" value="0">
+                        <p class="text-muted small">Integrations like SMS, email alerts, or third-party notifications.</p>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label fw-bold">Payment Gateways</label>
+                        <input type="number" id="numGateways" class="form-control w-50 mx-auto text-center" min="0" value="0">
+                        <p class="text-muted small">Online payment methods (e.g., GCash, PayPal, Credit Card).</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Calculate & Reset Buttons -->
+    <div class="text-center mb-5">
+        <button class="btn btn-primary btn-lg w-75 mb-3" onclick="calculatePrice(false)">
+            <i class="bi bi-calculator"></i> Calculate
+        </button>
+        <br>
+        <button class="btn btn-secondary btn-lg w-75" onclick="resetEstimator()">
+            <i class="bi bi-arrow-clockwise"></i> Reset
+        </button>
+    </div>
+
+    <hr/>
+
+    <div class="row">
+        <!-- Result and breakdown -->
+        <div class="col-md-6">
+            <div class="result-box" id="resultTotal">Estimated Price: ₱0</div>
+            <ul class="list-group" id="breakdown">
+                <li class="list-group-item text-center text-muted">Waiting for input...</li>
+            </ul>
+        </div>
+
+        <!-- Chart -->
+        <div class="col-md-6">
+            <div id="initialPlaceholder">
+                <i class="bi bi-pie-chart display-1"></i>
+                <p class="mt-3 fs-5 fw-bold">Price Breakdown Chart Awaiting Input</p>
+            </div>
+
+            <div id="chartDisplayContainer" style="display:none;">
+                <canvas id="priceChart"></canvas>
+                <ul id="customLegend" class="list-unstyled mt-4 d-flex flex-wrap justify-content-center"></ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Help Modal -->
+<button class="btn btn-info" id="helpButton" data-bs-toggle="modal" data-bs-target="#logicModal" style="display:none; position:fixed; bottom:30px; right:30px;">
+    <i class="bi bi-question-lg"></i>
+</button>
+
+<div class="modal fade" id="logicModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header bg-info text-white">
+        <h5 class="modal-title">Price Calculation Logic</h5>
+        <button class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <ul id="rateList" class="list-group list-group-flush"></ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const siteTypeSelect = document.getElementById("siteType");
+const numPagesContainer = document.getElementById("numPagesContainer");
+const dynamicInputs = document.getElementById("dynamicInputs");
+const initialPlaceholder = document.getElementById("initialPlaceholder");
+const chartDisplayContainer = document.getElementById("chartDisplayContainer");
+const helpButton = document.getElementById("helpButton");
+const customLegend = document.getElementById("customLegend");
+const rateList = document.getElementById("rateList");
+
+let chartInstance = null;
+
+const CHART_COLORS = [
+    "#007bff","#28a745","#ffc107","#dc3545","#17a2b8",
+    "#6f42c1","#fd7e14","#20c997","#e83e8c"
+];
+
+const PRICING = {
+    dynamic: {
+        "System Architecture & DB": { base: 3500, unit: 500, threshold: 5 },
+        "Backend Development": { base: 8000, unit: 1000, threshold: 1 },
+        "Frontend Development": { base: 1500, unit: 500, threshold: 1 },
+        "Notifications": { base: 0, unit: 2500, threshold: 0 },
+        "Payment Gateways": { base: 0, unit: 3000, threshold: 0 },
+        "Cybersecurity (Standard)": { base: 5000, unit: 0, threshold: 0 },
+        "Deployment & Hosting Setup": { base: 5000, unit: 0, threshold: 0 },
+        "Testing & Documentation": { base: 4000, unit: 0, threshold: 0 }
+    },
+    static: {
+        "Frontend Development": { base: 1500, unit: 500, threshold: 1 },
+        "Deployment & Hosting Setup": { base: 3000, unit: 0, threshold: 0 },
+        "Testing & Documentation": { base: 3000, unit: 0, threshold: 0 }
+    }
+};
+
+function drawEmptyChart() {
+    initialPlaceholder.style.display = "flex";
+    chartDisplayContainer.style.display = "none";
+    helpButton.style.display = "none";
+    document.getElementById("resultTotal").innerText = "Estimated Price: ₱0";
+    document.getElementById("breakdown").innerHTML =
+        `<li class="list-group-item text-center text-muted">Waiting for input...</li>`;
+    rateList.innerHTML = "";
+    if (chartInstance) chartInstance.destroy();
+    chartInstance = null;
+    customLegend.innerHTML = "";
+}
+
+siteTypeSelect.addEventListener("change", () => {
+    const type = siteTypeSelect.value;
+    numPagesContainer.style.display = type ? "block" : "none";
+    dynamicInputs.style.display = type === "dynamic" ? "block" : "none";
+    drawEmptyChart();
+});
+
+function calculateComponent(name, input, config, totals, explanations) {
+    let cost = config.base;
+    let text = `₱${config.base.toLocaleString()} base`;
+    const extra = Math.max(0, input - config.threshold);
+    if (config.unit > 0 && extra > 0) {
+        const inc = extra * config.unit;
+        cost += inc;
+        text += ` + ${extra} × ₱${config.unit.toLocaleString()} = ₱${inc.toLocaleString()}`;
+    }
+    totals[name] = cost;
+    explanations.push({ key: name, cost, text });
+}
+
+function calculatePrice(isInit) {
+    if (isInit) return drawEmptyChart();
+    const type = siteTypeSelect.value;
+    const pages = parseInt(document.getElementById("numPages").value) || 0;
+    if (!type || pages < 1) { alert("Enter a valid site type and at least 1 page."); return drawEmptyChart(); }
+
+    const totals = {};
+    const explanations = [];
+    const cfg = PRICING[type];
+
+    if (type === "dynamic") {
+        calculateComponent("System Architecture & DB", parseInt(numTables.value) || 0, cfg["System Architecture & DB"], totals, explanations);
+        calculateComponent("Backend Development", parseInt(numRoles.value) || 0, cfg["Backend Development"], totals, explanations);
+        calculateComponent("Frontend Development", pages, cfg["Frontend Development"], totals, explanations);
+        calculateComponent("Notifications", parseInt(numExternalNotifs.value) || 0, cfg["Notifications"], totals, explanations);
+        calculateComponent("Payment Gateways", parseInt(numGateways.value) || 0, cfg["Payment Gateways"], totals, explanations);
+        totals["Cybersecurity (Standard)"] = cfg["Cybersecurity (Standard)"].base;
+        totals["Deployment & Hosting Setup"] = cfg["Deployment & Hosting Setup"].base;
+        totals["Testing & Documentation"] = cfg["Testing & Documentation"].base;
+    } else {
+        calculateComponent("Frontend Development", pages, cfg["Frontend Development"], totals, explanations);
+        totals["Deployment & Hosting Setup"] = cfg["Deployment & Hosting Setup"].base;
+        totals["Testing & Documentation"] = cfg["Testing & Documentation"].base;
+    }
+
+    const total = Object.values(totals).reduce((a,b)=>a+b,0);
+    document.getElementById("resultTotal").innerText = `Estimated Price: ₱${total.toLocaleString()}`;
+
+    const breakdown = document.getElementById("breakdown");
+    breakdown.innerHTML = "";
+    Object.entries(totals).forEach(([k,v])=>{
+        breakdown.innerHTML += `<li class="list-group-item d-flex justify-content-between"><span>${k}</span><span class="text-success fw-bold">₱${v.toLocaleString()}</span></li>`;
+    });
+
+    // Modal individual prices
+    rateList.innerHTML = "";
+    Object.entries(totals).forEach(([k,v])=>{
+        const expl = explanations.find(e=>e.key===k);
+        const text = expl ? expl.text : `₱${v.toLocaleString()}`;
+        rateList.innerHTML += `<li class="list-group-item"><b>${k}</b><br><small>${text}</small><br><span class="fw-bold text-primary">₱${v.toLocaleString()}</span></li>`;
+    });
+
+    helpButton.style.display = "block";
+    initialPlaceholder.style.display = "none";
+    chartDisplayContainer.style.display = "block";
+
+    if (chartInstance) chartInstance.destroy();
+    const ctx = document.getElementById("priceChart").getContext("2d");
+    chartInstance = new Chart(ctx,{
+        type:"doughnut",
+        data:{labels:Object.keys(totals), datasets:[{data:Object.values(totals), backgroundColor:CHART_COLORS}]},
+        options:{responsive:true, plugins:{legend:{display:false}}}
+    });
+
+    customLegend.innerHTML="";
+    Object.keys(totals).forEach((label,i)=>{
+        customLegend.innerHTML += `<li class="chart-legend-item mx-2"><span class="chart-legend-color" style="background:${CHART_COLORS[i]}"></span>${label}</li>`;
+    });
+}
+
+// Reset function
+function resetEstimator(){
+    siteTypeSelect.value = "";
+    document.getElementById("numPages").value = 5;
+    document.getElementById("numTables").value = 5;
+    document.getElementById("numRoles").value = 1;
+    document.getElementById("numExternalNotifs").value = 0;
+    document.getElementById("numGateways").value = 0;
+    numPagesContainer.style.display = "none";
+    dynamicInputs.style.display = "none";
+    drawEmptyChart();
+}
+
+window.onload = ()=>calculatePrice(true);
+</script>
+
+</body>
+</html>
