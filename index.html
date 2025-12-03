@@ -9,8 +9,11 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
 <style>
+/* ... (Existing Styles) ... */
 body { 
     background-color: #f4f7f6; 
     padding: 40px; 
@@ -70,17 +73,59 @@ canvas {
     color: #6c757d;
     margin-top: 3px;
 }
+/* New style for PDF elements - ensure they are visible for html2canvas */
+.pdf-table-styles {
+    width: 190mm; /* Sizing for A4 */
+    margin: 10px;
+}
+.pdf-table-styles th, .pdf-table-styles td {
+    padding: 8px;
+    border: 1px solid #dee2e6;
+}
+.pdf-table-styles th {
+    background-color: #f8f9fa;
+    text-align: left;
+}
+/* New style for modal tables */
+.modal-pricing-table th, .modal-pricing-table td {
+    vertical-align: middle;
+}
+
+/* 🌟 NEW: Floating Button Styles */
+#discountButton {
+    position: fixed;
+    bottom: 30px;
+    right: 30px;
+    z-index: 1050; /* Above regular content, below modals */
+    padding: 15px 20px;
+    border-radius: 50px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    font-weight: bold;
+}
 </style>
 </head>
 
 <body>
 
 <div class="calculator">
-    <h1 class="mb-4 text-center text-primary">EZM Web Development Price Estimator 💰</h1>
+    <h1 class="mb-4 text-center text-primary">
+        EZ Web Development Price Estimator 💰
+        <button type="button" class="btn btn-link p-0 m-0 align-top" 
+                data-bs-toggle="modal" data-bs-target="#pricingModal" title="Show Detailed Pricing Structure">
+            <i class="bi bi-question-circle-fill fs-5 text-secondary"></i>
+        </button>
+    </h1>
     <p class="text-center text-muted mb-5">Select your project type and features to get an estimated cost breakdown.</p>
 
+    <div class="mb-4 text-center">
+        <label class="fw-bold">Client Type</label>
+        <select id="clientType" class="form-select w-50 mx-auto">
+            <option value="local" selected>Local Client</option>
+            <option value="foreign">Foreign Client</option>
+        </select>
+    </div>
+
     <div class="row mb-4">
-        <!-- Project Scope -->
         <div class="col-md-5 mx-auto">
             <div class="card card-input p-4 text-center">
                 <h3 class="card-title text-primary"><i class="bi bi-gear-fill"></i> Project Scope</h3>
@@ -102,7 +147,6 @@ canvas {
             </div>
         </div>
 
-        <!-- Dynamic Features -->
         <div class="col-md-7 mx-auto" id="dynamicInputs" style="display:none;">
             <div class="card card-input p-4 text-center">
                 <h3 class="card-title text-success"><i class="bi bi-server"></i> Dynamic Features</h3>
@@ -132,21 +176,23 @@ canvas {
         </div>
     </div>
 
-    <!-- Calculate & Reset Buttons -->
     <div class="text-center mb-5">
         <button class="btn btn-primary btn-lg w-75 mb-3" onclick="calculatePrice(false)">
             <i class="bi bi-calculator"></i> Calculate
         </button>
-        <br>
-        <button class="btn btn-secondary btn-lg w-75" onclick="resetEstimator()">
+
+        <button class="btn btn-secondary btn-lg w-75 mb-3" onclick="resetEstimator()">
             <i class="bi bi-arrow-clockwise"></i> Reset
+        </button>
+
+        <button class="btn btn-danger btn-lg w-75" onclick="generatePDF()">
+            <i class="bi bi-filetype-pdf"></i> Download PDF Report
         </button>
     </div>
 
     <hr/>
 
     <div class="row">
-        <!-- Result and breakdown -->
         <div class="col-md-6">
             <div class="result-box" id="resultTotal">Estimated Price: ₱0</div>
             <ul class="list-group" id="breakdown">
@@ -154,7 +200,6 @@ canvas {
             </ul>
         </div>
 
-        <!-- Chart -->
         <div class="col-md-6">
             <div id="initialPlaceholder">
                 <i class="bi bi-pie-chart display-1"></i>
@@ -169,24 +214,108 @@ canvas {
     </div>
 </div>
 
-<!-- Help Modal -->
-<button class="btn btn-info" id="helpButton" data-bs-toggle="modal" data-bs-target="#logicModal" style="display:none; position:fixed; bottom:30px; right:30px;">
-    <i class="bi bi-question-lg"></i>
+<div id="pdf-table-container" style="position: absolute; left: -9999px;">
+    <table id="pdf-breakdown-table" class="pdf-table-styles table table-striped"></table>
+</div>
+
+<div class="modal fade" id="pricingModal" tabindex="-1" aria-labelledby="pricingModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="pricingModalLabel"><i class="bi bi-info-circle"></i> Detailed Pricing Logic</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="lead">The estimation is calculated based on the following fixed and unit costs:</p>
+                <div id="pricingDetailsContent">
+                    </div>
+                <hr>
+                <div class="alert alert-info" role="alert">
+                    <h4 class="alert-heading">Client Type Multiplier</h4>
+                    <p>The total cost is multiplied by a factor of **2** for **Foreign Clients** to account for time-zone differences, increased communication complexity, and international billing standards.</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="discountModal" tabindex="-1" aria-labelledby="discountModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-md">
+        <div class="modal-content">
+            <div class="modal-header bg-warning text-dark">
+                <h5 class="modal-title" id="discountModalLabel"><i class="bi bi-percent"></i> Tailored Discount Calculator</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label for="basePriceInput" class="form-label fw-bold">Estimated Total Price (₱)</label>
+                    <input type="number" id="basePriceInput" class="form-control form-control-lg text-end" placeholder="Enter Base Price" min="0" value="0">
+                    <div class="form-text">**Note:** This is the base price from the main calculator or a custom estimate.</div>
+                </div>
+
+                <div class="mb-4">
+                    <label class="form-label fw-bold">Site Type (Re-confirm)</label>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="modalSiteType" id="modalSiteTypeStatic" value="static" checked>
+                        <label class="form-check-label" for="modalSiteTypeStatic">Static Site</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="modalSiteType" id="modalSiteTypeDynamic" value="dynamic">
+                        <label class="form-check-label" for="modalSiteTypeDynamic">Dynamic Site</label>
+                    </div>
+                </div>
+
+                <h6 class="mt-4 border-bottom pb-2"><i class="bi bi-tags-fill"></i> Applicable Discounts & Perks</h6>
+
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" value="" id="referralDiscount">
+                    <label class="form-check-label" for="referralDiscount">
+                        Referral Discount (**5%** off)
+                    </label>
+                </div>
+                
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" value="" id="studentDiscount">
+                    <label class="form-check-label" for="studentDiscount">
+                        Student/Thesis Discount (**10%** off)
+                    </label>
+                </div>
+                
+                <div class="form-check mb-3">
+                    <input class="form-check-input" type="checkbox" value="" id="planAPerk">
+                    <label class="form-check-label" for="planAPerk">
+                        Plan A Perks
+                        <span class="text-danger small ms-2" id="planAPerkDesc">(Plan A Perk: Not Applicable to Static Sites)</span>
+                    </label>
+                </div>
+
+                <button class="btn btn-warning w-100 mt-3" onclick="calculateDiscounts()">
+                    Calculate Final Tailored Price
+                </button>
+                
+                <hr>
+
+                <div class="result-box mt-3 bg-success text-white" id="discountResult">
+                    Final Price: ₱0
+                </div>
+
+                <ul class="list-group mt-3" id="discountBreakdown">
+                    <li class="list-group-item">No calculations performed yet.</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+<button id="discountButton" class="btn btn-warning" 
+        data-bs-toggle="modal" data-bs-target="#discountModal" 
+        onclick="prefillDiscountModal()">
+    <i class="bi bi-wallet2"></i> Discount Tool
 </button>
 
-<div class="modal fade" id="logicModal" tabindex="-1">
-  <div class="modal-dialog modal-lg modal-dialog-scrollable">
-    <div class="modal-content">
-      <div class="modal-header bg-info text-white">
-        <h5 class="modal-title">Price Calculation Logic</h5>
-        <button class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body">
-        <ul id="rateList" class="list-group list-group-flush"></ul>
-      </div>
-    </div>
-  </div>
-</div>
 
 <script>
 const siteTypeSelect = document.getElementById("siteType");
@@ -194,9 +323,8 @@ const numPagesContainer = document.getElementById("numPagesContainer");
 const dynamicInputs = document.getElementById("dynamicInputs");
 const initialPlaceholder = document.getElementById("initialPlaceholder");
 const chartDisplayContainer = document.getElementById("chartDisplayContainer");
-const helpButton = document.getElementById("helpButton");
 const customLegend = document.getElementById("customLegend");
-const rateList = document.getElementById("rateList");
+const pricingDetailsContent = document.getElementById("pricingDetailsContent"); 
 
 let chartInstance = null;
 
@@ -205,35 +333,63 @@ const CHART_COLORS = [
     "#6f42c1","#fd7e14","#20c997","#e83e8c"
 ];
 
+// UPDATED: Shortened unit cost descriptions
 const PRICING = {
     dynamic: {
-        "System Architecture & DB": { base: 3500, unit: 500, threshold: 5 },
-        "Backend Development": { base: 8000, unit: 1000, threshold: 1 },
-        "Frontend Development": { base: 1500, unit: 500, threshold: 1 },
-        "Notifications": { base: 0, unit: 2500, threshold: 0 },
-        "Payment Gateways": { base: 0, unit: 3000, threshold: 0 },
-        "Cybersecurity (Standard)": { base: 5000, unit: 0, threshold: 0 },
-        "Deployment & Hosting Setup": { base: 5000, unit: 0, threshold: 0 },
-        "Testing & Documentation": { base: 4000, unit: 0, threshold: 0 }
+        "System Architecture & DB": { base: 3500, unit: 500, threshold: 5, desc: "Initial cost covers up to 5 database tables. +₱500 for every additional table." },
+        "Backend Development": { base: 8000, unit: 1000, threshold: 1, desc: "Covers 1 default user role/type. +₱1000 for every additional user type/role." },
+        "Frontend Development": { base: 1500, unit: 500, threshold: 1, desc: "Cost for the initial Homepage. +₱500 for every other unique page." },
+        "Notifications": { base: 0, unit: 2500, threshold: 0, desc: "In-app notifications are default. +₱2500 for every external service (e.g., email/SMS API)." },
+        "Payment Gateways": { base: 0, unit: 3000, threshold: 0, desc: "+₱3000 flat fee for integrating each online payment method (e.g., PayPal, Stripe)." },
+        "Cybersecurity (Standard)": { base: 5000, unit: 0, threshold: 0, desc: "Fixed cost for standard security setup (SSL, input sanitization, etc.)." },
+        "Deployment & Hosting Setup": { base: 5000, unit: 0, threshold: 0, desc: "Fixed cost for setting up the live production environment." },
+        "Testing & Documentation": { base: 4000, unit: 0, threshold: 0, desc: "Fixed cost for quality assurance and comprehensive project handover documents." }
     },
     static: {
-        "Frontend Development": { base: 1500, unit: 500, threshold: 1 },
-        "Deployment & Hosting Setup": { base: 3000, unit: 0, threshold: 0 },
-        "Testing & Documentation": { base: 3000, unit: 0, threshold: 0 }
+        "Frontend Development": { base: 1500, unit: 500, threshold: 1, desc: "Cost for the initial Homepage. +₱500 for every other unique page." },
+        "Deployment & Hosting Setup": { base: 3500, unit: 0, threshold: 0, desc: "Fixed cost for setting up static hosting environment." },
+        "Testing & Documentation": { base: 3000, unit: 0, threshold: 0, desc: "Fixed cost for quality assurance and basic handover documentation." }
+    }
+};
+
+// Percentage labels plugin for CHART.js (Kept for screen display)
+const percentagePlugin = {
+    id: "percentagePlugin",
+    afterDraw(chart) {
+        const { ctx } = chart;
+        const dataset = chart.data.datasets[0];
+        const meta = chart.getDatasetMeta(0);
+        const total = dataset.data.reduce((a, b) => a + b, 0);
+
+        ctx.save();
+        ctx.font = "bold 13px Arial";
+        ctx.fillStyle = "#333";
+        ctx.textAlign = "center";
+
+        meta.data.forEach((arc, i) => {
+            const value = dataset.data[i];
+            if (value <= 0) return;
+
+            const percentage = ((value / total) * 100).toFixed(1) + "%";
+            const pos = arc.tooltipPosition();
+            ctx.fillText(percentage, pos.x, pos.y);
+        });
+
+        ctx.restore();
     }
 };
 
 function drawEmptyChart() {
     initialPlaceholder.style.display = "flex";
     chartDisplayContainer.style.display = "none";
-    helpButton.style.display = "none";
     document.getElementById("resultTotal").innerText = "Estimated Price: ₱0";
     document.getElementById("breakdown").innerHTML =
         `<li class="list-group-item text-center text-muted">Waiting for input...</li>`;
-    rateList.innerHTML = "";
     if (chartInstance) chartInstance.destroy();
     chartInstance = null;
     customLegend.innerHTML = "";
+
+    document.getElementById("pdf-breakdown-table").innerHTML = "";
 }
 
 siteTypeSelect.addEventListener("change", () => {
@@ -243,93 +399,469 @@ siteTypeSelect.addEventListener("change", () => {
     drawEmptyChart();
 });
 
-function calculateComponent(name, input, config, totals, explanations) {
+function calculateComponent(name, input, config, totals) {
     let cost = config.base;
-    let text = `₱${config.base.toLocaleString()} base`;
     const extra = Math.max(0, input - config.threshold);
+
     if (config.unit > 0 && extra > 0) {
-        const inc = extra * config.unit;
-        cost += inc;
-        text += ` + ${extra} × ₱${config.unit.toLocaleString()} = ₱${inc.toLocaleString()}`;
+        cost += extra * config.unit;
     }
     totals[name] = cost;
-    explanations.push({ key: name, cost, text });
 }
 
 function calculatePrice(isInit) {
     if (isInit) return drawEmptyChart();
+
     const type = siteTypeSelect.value;
     const pages = parseInt(document.getElementById("numPages").value) || 0;
-    if (!type || pages < 1) { alert("Enter a valid site type and at least 1 page."); return drawEmptyChart(); }
+    const clientType = document.getElementById("clientType").value;
+
+    if (!type || pages < 1) {
+        alert("Enter a valid site type and at least 1 page.");
+        return drawEmptyChart();
+    }
 
     const totals = {};
-    const explanations = [];
     const cfg = PRICING[type];
 
     if (type === "dynamic") {
-        calculateComponent("System Architecture & DB", parseInt(numTables.value) || 0, cfg["System Architecture & DB"], totals, explanations);
-        calculateComponent("Backend Development", parseInt(numRoles.value) || 0, cfg["Backend Development"], totals, explanations);
-        calculateComponent("Frontend Development", pages, cfg["Frontend Development"], totals, explanations);
-        calculateComponent("Notifications", parseInt(numExternalNotifs.value) || 0, cfg["Notifications"], totals, explanations);
-        calculateComponent("Payment Gateways", parseInt(numGateways.value) || 0, cfg["Payment Gateways"], totals, explanations);
+        calculateComponent("System Architecture & DB", parseInt(numTables.value) || 0, cfg["System Architecture & DB"], totals);
+        calculateComponent("Backend Development", parseInt(numRoles.value) || 0, cfg["Backend Development"], totals);
+        calculateComponent("Frontend Development", pages, cfg["Frontend Development"], totals);
+        calculateComponent("Notifications", parseInt(numExternalNotifs.value) || 0, cfg["Notifications"], totals);
+        calculateComponent("Payment Gateways", parseInt(numGateways.value) || 0, cfg["Payment Gateways"], totals);
+
         totals["Cybersecurity (Standard)"] = cfg["Cybersecurity (Standard)"].base;
         totals["Deployment & Hosting Setup"] = cfg["Deployment & Hosting Setup"].base;
         totals["Testing & Documentation"] = cfg["Testing & Documentation"].base;
     } else {
-        calculateComponent("Frontend Development", pages, cfg["Frontend Development"], totals, explanations);
+        calculateComponent("Frontend Development", pages, cfg["Frontend Development"], totals);
         totals["Deployment & Hosting Setup"] = cfg["Deployment & Hosting Setup"].base;
+        // In the original, static had 'Testing' but PRICING had 'Testing & Documentation', aligning here.
         totals["Testing & Documentation"] = cfg["Testing & Documentation"].base;
     }
 
-    const total = Object.values(totals).reduce((a,b)=>a+b,0);
-    document.getElementById("resultTotal").innerText = `Estimated Price: ₱${total.toLocaleString()}`;
+    // Cost before multiplier
+    let baseCost = Object.values(totals).reduce((a,b)=>a+b,0);
+    
+    // Apply FOREIGN MULTIPLIER = x2 (for final client display)
+    let finalClientTotal = baseCost;
+    if (clientType === "foreign") finalClientTotal *= 2;
 
-    const breakdown = document.getElementById("breakdown");
-    breakdown.innerHTML = "";
+    // Use toLocaleString for the on-screen display
+    document.getElementById("resultTotal").innerText =
+        `Estimated Price: ₱${Math.round(finalClientTotal).toLocaleString()}`;
+
+    // Breakdown for on-screen UL (using BASE COSTS)
+    const breakdownUl = document.getElementById("breakdown");
+    breakdownUl.innerHTML = "";
     Object.entries(totals).forEach(([k,v])=>{
-        breakdown.innerHTML += `<li class="list-group-item d-flex justify-content-between"><span>${k}</span><span class="text-success fw-bold">₱${v.toLocaleString()}</span></li>`;
+        breakdownUl.innerHTML += `
+            <li class="list-group-item d-flex justify-content-between">
+                <span>${k}</span>
+                <span class="text-success fw-bold">₱${v.toLocaleString()}</span>
+            </li>`;
     });
 
-    // Modal individual prices
-    rateList.innerHTML = "";
+    // Breakdown for PDF TABLE (using BASE COSTS)
+    const breakdownTable = document.getElementById("pdf-breakdown-table");
+    let tableHtml = `
+        <thead>
+            <tr style="background-color: #007bff; color: white;">
+                <th colspan="2">Price Breakdown (Before Multiplier)</th>
+            </tr>
+            <tr>
+                <th>Component</th>
+                <th>Estimated Cost (₱)</th>
+            </tr>
+        </thead>
+        <tbody>`;
     Object.entries(totals).forEach(([k,v])=>{
-        const expl = explanations.find(e=>e.key===k);
-        const text = expl ? expl.text : `₱${v.toLocaleString()}`;
-        rateList.innerHTML += `<li class="list-group-item"><b>${k}</b><br><small>${text}</small><br><span class="fw-bold text-primary">₱${v.toLocaleString()}</span></li>`;
+        tableHtml += `
+            <tr>
+                <td>${k}</td>
+                <td style="text-align: right;">${v.toLocaleString()}</td>
+            </tr>`;
     });
+    tableHtml += `
+        <tr style="font-weight: bold; background-color: #f0f0f0;">
+            <td>Subtotal</td>
+            <td style="text-align: right;">₱${baseCost.toLocaleString()}</td>
+        </tr>
+        </tbody>`;
+    breakdownTable.innerHTML = tableHtml;
 
-    helpButton.style.display = "block";
+
     initialPlaceholder.style.display = "none";
     chartDisplayContainer.style.display = "block";
 
-    if (chartInstance) chartInstance.destroy();
+    // Chart for Display ONLY
+    const chartData = {
+        labels: Object.keys(totals),
+        datasets: [{
+            data: Object.values(totals),
+            backgroundColor: CHART_COLORS
+        }]
+    };
+    
+    // On-Screen Chart
     const ctx = document.getElementById("priceChart").getContext("2d");
-    chartInstance = new Chart(ctx,{
-        type:"doughnut",
-        data:{labels:Object.keys(totals), datasets:[{data:Object.values(totals), backgroundColor:CHART_COLORS}]},
-        options:{responsive:true, plugins:{legend:{display:false}}}
+    if (chartInstance) chartInstance.destroy();
+
+    chartInstance = new Chart(ctx, {
+        type: "doughnut",
+        data: chartData,
+        options: {
+            responsive: true,
+            plugins: { legend: { display:false } }
+        },
+        plugins: [percentagePlugin]
     });
 
-    customLegend.innerHTML="";
+    customLegend.innerHTML = "";
     Object.keys(totals).forEach((label,i)=>{
-        customLegend.innerHTML += `<li class="chart-legend-item mx-2"><span class="chart-legend-color" style="background:${CHART_COLORS[i]}"></span>${label}</li>`;
+        customLegend.innerHTML += `
+            <li class="chart-legend-item mx-2">
+                <span class="chart-legend-color" style="background:${CHART_COLORS[i % CHART_COLORS.length]}"></span>
+                ${label}
+            </li>`;
     });
+
+    return finalClientTotal; // Return the final multiplied total for PDF
 }
 
-// Reset function
-function resetEstimator(){
+// Function to populate the modal with pricing details (UPDATED for short notation)
+function populatePricingModal() {
+    let content = '';
+
+    for (const type in PRICING) {
+        content += `<h3 class="mt-4 mb-3 text-${type === 'dynamic' ? 'success' : 'primary'}">${type.charAt(0).toUpperCase() + type.slice(1)} Site Pricing</h3>`;
+        content += `<table class="table table-bordered modal-pricing-table">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Component</th>
+                                <th>Base Cost (PHP)</th>
+                                <th>Unit Cost / Fee</th>
+                                <th>Description</th>
+                            </tr>
+                        </thead>
+                        <tbody>`;
+
+        for (const [component, config] of Object.entries(PRICING[type])) {
+            const baseText = config.base > 0 ? `₱${config.base.toLocaleString()}` : 'N/A';
+            let unitText;
+
+            if (component === "Frontend Development") {
+                unitText = `+₱${config.unit.toLocaleString()}/page`;
+            } else if (component === "System Architecture & DB") {
+                // MODIFIED HERE
+                unitText = `+₱${config.unit.toLocaleString()}/add'l table`;
+            } else if (component === "Backend Development") {
+                // MODIFIED HERE
+                unitText = `+₱${config.unit.toLocaleString()}/add'l role`;
+            } else if (config.unit > 0 && config.threshold === 0) {
+                 unitText = `+₱${config.unit.toLocaleString()} per unit`;
+            } else {
+                unitText = 'Fixed';
+            }
+            
+            content += `
+                <tr>
+                    <td class="fw-bold">${component}</td>
+                    <td>${baseText}</td>
+                    <td>${unitText}</td>
+                    <td class="text-muted small">${config.desc}</td>
+                </tr>`;
+        }
+        content += `</tbody></table>`;
+    }
+    pricingDetailsContent.innerHTML = content;
+}
+
+// RESET
+function resetEstimator() {
     siteTypeSelect.value = "";
     document.getElementById("numPages").value = 5;
     document.getElementById("numTables").value = 5;
     document.getElementById("numRoles").value = 1;
     document.getElementById("numExternalNotifs").value = 0;
     document.getElementById("numGateways").value = 0;
+    document.getElementById("clientType").value = "local";
     numPagesContainer.style.display = "none";
     dynamicInputs.style.display = "none";
     drawEmptyChart();
+    
+    // Reset Discount Modal elements on main reset
+    document.getElementById("basePriceInput").value = 0;
+    document.getElementById("modalSiteTypeStatic").checked = true;
+    document.getElementById("referralDiscount").checked = false;
+    document.getElementById("studentDiscount").checked = false;
+    document.getElementById("planAPerk").checked = false;
+    document.getElementById("discountResult").innerText = "Final Price: ₱0";
+    document.getElementById("discountBreakdown").innerHTML = '<li class="list-group-item">No calculations performed yet.</li>';
+    document.getElementById("planAPerkDesc").innerText = '(Plan A Perk: Not Applicable to Static Sites)';
+    document.getElementById("planAPerk").disabled = true;
 }
 
-window.onload = ()=>calculatePrice(true);
+// PDF REPORT (UNCHANGED logic from last fix)
+async function generatePDF() {
+    const { jsPDF } = window.jspdf;
+    
+    // Ensure calculation is run to get the final total and update PDF table
+    const finalTotal = calculatePrice(false);
+    if (finalTotal === 0) {
+         alert("Please calculate a price before generating a PDF.");
+         return; 
+    }
+
+    const doc = new jsPDF('p', 'mm', 'a4');
+    const pageHeight = doc.internal.pageSize.height;
+    let y_pos = 10;
+
+    // Helper function to format number with commas without locale issues
+    const formatNumber = (num) => {
+        // Round to nearest integer and use regex to insert commas
+        return Math.round(num).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+    };
+
+    // --- 1. HEADER ---
+    doc.setFontSize(10);
+    doc.text(`Date: ${new Date().toLocaleDateString()}`, 190, y_pos, null, null, 'right');
+    y_pos += 10;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(18);
+    doc.setTextColor('#007bff');
+    doc.text("Web Development Price Estimation Report", 105, y_pos, null, null, 'center');
+    y_pos += 5;
+    doc.setFontSize(12);
+    doc.setTextColor(0, 0, 0); 
+    doc.text("Prepared by EZ Web Solutions", 105, y_pos, null, null, 'center');
+    y_pos += 10;
+    doc.line(10, y_pos - 3, 200, y_pos - 3); 
+    y_pos += 5; 
+    
+    // --- 2. SUMMARY / TOTAL ---
+    const siteType = siteTypeSelect.value;
+    const clientType = document.getElementById("clientType").value;
+
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`Project Summary`, 10, y_pos);
+    y_pos += 7;
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'normal');
+    
+    doc.text(`Site Type: ${siteType.charAt(0).toUpperCase() + siteType.slice(1)}`, 10, y_pos);
+    y_pos += 6;
+    doc.text(`Number of Pages: ${document.getElementById("numPages").value}`, 10, y_pos);
+    y_pos += 6;
+    doc.text(`Client Type: ${clientType === 'foreign' ? 'Foreign Client' : 'Local Client'}`, 10, y_pos);
+    y_pos += 10;
+
+    doc.setFontSize(16);
+    doc.setTextColor('#dc3545'); 
+    doc.setFont('helvetica', 'bold');
+
+    const totalString = `${formatNumber(finalTotal)} php`;
+    doc.text(`TOTAL ESTIMATED PRICE: ${totalString}`, 10, y_pos); 
+
+    y_pos += 10;
+    doc.setTextColor(0, 0, 0); 
+
+    // --- 3. PRICE BREAKDOWN (Table Capture) ---
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`Detailed Price Breakdown (Before Client Multiplier)`, 10, y_pos);
+    y_pos += 3;
+
+    const tableElement = document.getElementById('pdf-table-container');
+    const tableCanvas = await html2canvas(tableElement, { scale: 2 });
+    const tableImgData = tableCanvas.toDataURL('image/png');
+    
+    const tableWidth = 190; 
+    const tableHeight = tableWidth / tableCanvas.width * tableCanvas.height;
+    
+    doc.addImage(tableImgData, 'PNG', 10, y_pos, tableWidth, tableHeight);
+    y_pos += tableHeight + 10;
+
+    // --- 4. IMPORTANT NOTES/DISCLAIMER ---
+    if (y_pos + 70 > pageHeight) { 
+        doc.addPage();
+        y_pos = 10;
+    }
+
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor('#6c757d'); 
+    
+    const notes = [
+        "IMPORTANT NOTES:",
+        "1. This is an **ESTIMATION** only and is subject to change upon detailed final scoping and requirements gathering.",
+        `2. The quoted price **INCLUDES** initial hosting and domain registration for the first 1 year, but ongoing maintenance and fees thereafter are not covered.`,
+        `3. A multiplier of x2 is applied to Foreign Clients to ensure the financial value of the contract is commensurate with international market rates and to mitigate risks associated with cross-currency fluctuation.`,
+        `4. Features requiring complex third-party API integration may incur additional costs.`,
+        `5. Revisions or major changes requested **post-deployment** will be billed separately from this contract.`,
+        "6. This estimate is valid for **30 days** from the date of issuance."
+    ];
+
+    doc.text(notes, 10, y_pos, { maxWidth: 190, lineHeightFactor: 1.5 });
+    y_pos += notes.length * 6 + 5;
+
+    // --- 5. FOOTER ---
+    doc.line(10, pageHeight - 15, 200, pageHeight - 15); 
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor('#007bff');
+    doc.text("EZ Web Solutions", 10, pageHeight - 10);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(0, 0, 0);
+    doc.text("Providing innovative web development solutions.", 200, pageHeight - 10, null, null, 'right');
+
+    doc.save("Website_Estimate.pdf");
+}
+
+// 🌟 NEW: Discount Modal Logic
+
+/**
+ * Prefills the Discount Modal with the current estimated price and site type
+ * from the main calculator, if available.
+ */
+function prefillDiscountModal() {
+    const totalElement = document.getElementById("resultTotal").innerText;
+    const currentSiteType = siteTypeSelect.value;
+    const basePriceInput = document.getElementById("basePriceInput");
+    const staticRadio = document.getElementById("modalSiteTypeStatic");
+    const dynamicRadio = document.getElementById("modalSiteTypeDynamic");
+    
+    // Extract number from "Estimated Price: ₱X,XXX"
+    const priceMatch = totalElement.match(/₱([\d,]+)/);
+    const estimatedPrice = priceMatch ? parseInt(priceMatch[1].replace(/,/g, '')) : 0;
+    
+    // Set the base price
+    basePriceInput.value = estimatedPrice;
+
+    // Set the site type radio button
+    if (currentSiteType === 'dynamic') {
+        dynamicRadio.checked = true;
+    } else {
+        staticRadio.checked = true;
+    }
+    
+    // Update perk description and status immediately
+    updatePlanAPerkDescription();
+    
+    // Recalculate upon opening the modal if a base price exists
+    if (estimatedPrice > 0) {
+        calculateDiscounts();
+    } else {
+        document.getElementById("discountResult").innerText = "Final Price: ₱0";
+        document.getElementById("discountBreakdown").innerHTML = '<li class="list-group-item">Enter a base price and click calculate.</li>';
+    }
+}
+
+/**
+ * Updates the description and status for Plan A Perk based on the selected site type in the modal.
+ * ❗ CHANGE: Disables and unchecks the Plan A checkbox if Static is selected.
+ */
+function updatePlanAPerkDescription() {
+    const isDynamic = document.getElementById("modalSiteTypeDynamic").checked;
+    const perkDesc = document.getElementById("planAPerkDesc");
+    const planAPerkCheckbox = document.getElementById("planAPerk");
+    
+    if (isDynamic) {
+        planAPerkCheckbox.disabled = false;
+        perkDesc.innerHTML = '<span class="text-success fw-bold">(Free Documentation: -₱1,000)</span>';
+    } else {
+        // Disable and uncheck if static
+        planAPerkCheckbox.disabled = true;
+        planAPerkCheckbox.checked = false; 
+        perkDesc.innerHTML = '(Plan A Perk: Not Applicable to Static Sites)';
+    }
+    // Rerun calculation if inputs change while modal is open (optional, but good UX)
+    calculateDiscounts();
+}
+
+// Event listeners for the modal radio buttons to update the perk description
+document.getElementById("modalSiteTypeStatic").addEventListener("change", updatePlanAPerkDescription);
+document.getElementById("modalSiteTypeDynamic").addEventListener("change", updatePlanAPerkDescription);
+
+
+/**
+ * Calculates the final price based on the estimated price and selected discounts.
+ */
+function calculateDiscounts() {
+    let price = parseFloat(document.getElementById("basePriceInput").value) || 0;
+    const isReferral = document.getElementById("referralDiscount").checked;
+    const isStudent = document.getElementById("studentDiscount").checked;
+    const isPlanA = document.getElementById("planAPerk").checked;
+    const isDynamic = document.getElementById("modalSiteTypeDynamic").checked;
+
+    if (price <= 0) {
+        document.getElementById("discountResult").innerText = "Final Price: ₱0";
+        document.getElementById("discountBreakdown").innerHTML = '<li class="list-group-item text-danger">Please enter a positive estimated price.</li>';
+        return;
+    }
+
+    let finalPrice = price;
+    let breakdownHtml = `<li class="list-group-item d-flex justify-content-between">
+                            <span class="fw-bold">Base Estimated Price</span>
+                            <span class="fw-bold">₱${price.toLocaleString()}</span>
+                         </li>`;
+
+    // 1. Percentage Discounts (Applied sequentially)
+    if (isReferral) {
+        const discountAmount = price * 0.05;
+        finalPrice -= discountAmount;
+        breakdownHtml += `<li class="list-group-item d-flex justify-content-between text-success">
+                            <span>- Referral Discount (5%)</span>
+                            <span>-₱${Math.round(discountAmount).toLocaleString()}</span>
+                         </li>`;
+    }
+    
+    if (isStudent) {
+        const discountAmount = price * 0.10;
+        finalPrice -= discountAmount;
+        breakdownHtml += `<li class="list-group-item d-flex justify-content-between text-success">
+                            <span>- Student/Thesis Discount (10%)</span>
+                            <span>-₱${Math.round(discountAmount).toLocaleString()}</span>
+                         </li>`;
+    }
+    
+    // 2. Fixed Discounts/Perks
+    if (isPlanA && isDynamic) {
+        const fixedDeduction = 1000;
+        finalPrice -= fixedDeduction;
+        breakdownHtml += `<li class="list-group-item d-flex justify-content-between text-success">
+                            <span>- Plan A Perk (Free Documentation)</span>
+                            <span>-₱${fixedDeduction.toLocaleString()}</span>
+                         </li>`;
+    } else if (!isDynamic) {
+         // Added a clear indicator if Plan A was intended but not applied due to site type
+         breakdownHtml += `<li class="list-group-item d-flex justify-content-between text-muted">
+                            <span>Plan A Perk (Static)</span>
+                            <span>Not Applicable</span>
+                         </li>`;
+    }
+
+    // 3. Final Result
+    finalPrice = Math.max(0, finalPrice); // Ensure price doesn't go below zero
+
+    breakdownHtml += `<li class="list-group-item d-flex justify-content-between fw-bold bg-light mt-2">
+                        <span>Final Price</span>
+                        <span>₱${Math.round(finalPrice).toLocaleString()}</span>
+                     </li>`;
+
+    document.getElementById("discountResult").innerText = `Final Price: ₱${Math.round(finalPrice).toLocaleString()}`;
+    document.getElementById("discountBreakdown").innerHTML = breakdownHtml;
+}
+
+
+window.onload = () => {
+    calculatePrice(true);
+    populatePricingModal();
+    // Pre-populate the modal on load with default 0 price
+    prefillDiscountModal(); 
+};
 </script>
 
 </body>
