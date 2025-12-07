@@ -6,6 +6,15 @@ const chartDisplayContainer = document.getElementById("chartDisplayContainer");
 const customLegend = document.getElementById("customLegend");
 const pricingDetailsContent = document.getElementById("pricingDetailsContent"); 
 
+// --- Retrieve necessary dynamic inputs by ID for use in calculatePrice ---
+// It is critical to declare these outside the function for scope/readability,
+// as they are used in `calculatePrice` when type === "dynamic".
+const numTables = document.getElementById("numTables");
+const numRoles = document.getElementById("numRoles");
+const numExternalNotifs = document.getElementById("numExternalNotifs");
+const numGateways = document.getElementById("numGateways");
+
+
 let chartInstance = null;
 
 const CHART_COLORS = [
@@ -23,14 +32,19 @@ const PRICING = {
         "Payment Gateways": { base: 0, unit: 3000, threshold: 0, desc: "+₱3000 flat fee for integrating each online payment method (e.g., PayPal, Stripe)." },
         "Cybersecurity (Standard)": { base: 5000, unit: 0, threshold: 0, desc: "Fixed cost for standard security setup (SSL, input sanitization, etc.)." },
         "Deployment & Hosting Setup": { base: 5000, unit: 0, threshold: 0, desc: "Fixed cost for setting up the live production environment." },
-        "Testing & Documentation": { base: 4000, unit: 0, threshold: 0, desc: "Fixed cost for quality assurance and comprehensive project handover documents." },
-        "Miscellaneous": { base: 5000, unit: 0, threshold: 0, desc: "Fixed cost for unforeseen minor items and general overhead." }
+        // UPDATED: Testing & Documentation = 3000 (was 4000)
+        "Testing & Documentation": { base: 3000, unit: 0, threshold: 0, desc: "Fixed cost for quality assurance and comprehensive project handover documents." },
+        // UPDATED: Miscellaneous = 3000 (was 5000)
+        "Miscellaneous": { base: 3000, unit: 0, threshold: 0, desc: "Fixed cost for unforeseen minor items and general overhead." }
     },
     static: {
         "Frontend Development": { base: 1500, unit: 500, threshold: 1, desc: "Cost for the initial Homepage. +₱500 for every other unique page." },
-        "Deployment & Hosting Setup": { base: 3500, unit: 0, threshold: 0, desc: "Fixed cost for setting up static hosting environment." },
-        "Testing & Documentation": { base: 3000, unit: 0, threshold: 0, desc: "Fixed cost for quality assurance and basic handover documentation." },
-        "Miscellaneous": { base: 3000, unit: 0, threshold: 0, desc: "Fixed cost for unforeseen minor items and general overhead." }
+        // UPDATED: Deployment & Hosting Setup = 3000 (was 3500)
+        "Deployment & Hosting Setup": { base: 3000, unit: 0, threshold: 0, desc: "Fixed cost for setting up static hosting environment." },
+        // UPDATED: Testing & Documentation = 1000 (was 3000)
+        "Testing & Documentation": { base: 1000, unit: 0, threshold: 0, desc: "Fixed cost for quality assurance and basic handover documentation." },
+        // UPDATED: Miscellaneous = 1000 (was 3000)
+        "Miscellaneous": { base: 1000, unit: 0, threshold: 0, desc: "Fixed cost for unforeseen minor items and general overhead." }
     }
 };
 
@@ -61,6 +75,9 @@ const percentagePlugin = {
     }
 };
 
+// --- CORE FUNCTIONS ---
+
+// Initializes the calculator display state
 function drawEmptyChart() {
     initialPlaceholder.style.display = "flex";
     chartDisplayContainer.style.display = "none";
@@ -74,9 +91,12 @@ function drawEmptyChart() {
     document.getElementById("pdf-breakdown-table").innerHTML = "";
 }
 
+// --- FIX: Correctly manage visibility when the Site Type SELECT changes ---
 siteTypeSelect.addEventListener("change", () => {
     const type = siteTypeSelect.value;
+    // Show the number of pages input if any type is selected
     numPagesContainer.style.display = type ? "block" : "none";
+    // Show the dynamic inputs ONLY if 'dynamic' is selected
     dynamicInputs.style.display = type === "dynamic" ? "block" : "none";
     drawEmptyChart();
 });
@@ -95,11 +115,11 @@ function calculatePrice(isInit) {
     if (isInit) return drawEmptyChart();
 
     const type = siteTypeSelect.value;
-    const pages = parseInt(document.getElementById("numPages").value) || 0;
+    // Ensure the input element exists and get its value
+    const pages = parseInt(document.getElementById("numPages")?.value) || 0;
     const clientType = document.getElementById("clientType").value;
 
     if (!type || pages < 1) {
-        // Using console.error instead of alert for better user experience
         console.error("Enter a valid site type and at least 1 page.");
         return drawEmptyChart();
     }
@@ -108,6 +128,7 @@ function calculatePrice(isInit) {
     const cfg = PRICING[type];
 
     if (type === "dynamic") {
+        // Use the globally defined elements for calculating dynamic features
         calculateComponent("System Architecture & DB", parseInt(numTables.value) || 0, cfg["System Architecture & DB"], totals);
         calculateComponent("Backend Development", parseInt(numRoles.value) || 0, cfg["Backend Development"], totals);
         calculateComponent("Frontend Development", pages, cfg["Frontend Development"], totals);
@@ -137,6 +158,7 @@ function calculatePrice(isInit) {
         `Estimated Price: ₱${Math.round(finalClientTotal).toLocaleString()}`;
         
     // Also update the base price input in the discount modal
+    // Note: The discount modal uses an explicit radio button logic which is now obsolete/commented out below.
     document.getElementById("basePriceInput").value = Math.round(finalClientTotal);
 
     // Breakdown for on-screen UL (using BASE COSTS)
@@ -245,7 +267,7 @@ function populatePricingModal() {
             } else if (component === "Backend Development") {
                 unitText = `+₱${config.unit.toLocaleString()}/add'l role`;
             } else if (config.unit > 0 && config.threshold === 0) {
-                 unitText = `+₱${config.unit.toLocaleString()} per unit`;
+               unitText = `+₱${config.unit.toLocaleString()} per unit`;
             } else {
                 unitText = 'Fixed';
             }
@@ -278,13 +300,17 @@ function resetEstimator() {
     
     // Reset Discount Modal elements on main reset
     document.getElementById("basePriceInput").value = 0;
-    document.getElementById("modalSiteTypeStatic").checked = true;
+    // NOTE: modalSiteTypeStatic/Dynamic radio buttons are now removed from the HTML
+    // and are not required for discount calculation in the current logic. 
+    // The discount logic only relies on the checked status of the discount checkboxes.
+    
+    // Reset discount checkboxes
     document.getElementById("referralDiscount").checked = false;
     document.getElementById("studentDiscount").checked = false;
     document.getElementById("planADiscount").checked = false; 
+    
     document.getElementById("discountResult").innerText = "Final Price: ₱0";
     document.getElementById("discountBreakdown").innerHTML = '<li class="list-group-item">No calculations performed yet.</li>';
-    document.getElementById("planADiscountDesc").innerText = '(Plan A Discount: 10% Off)'; 
 }
 
 // PDF REPORT (UNCHANGED logic)
@@ -348,7 +374,7 @@ async function generatePDF() {
     doc.setFont('helvetica', 'bold');
 
     const totalString = `${formatNumber(finalTotal)} php`;
-    doc.text(`TOTAL ESTIMATED PRICE: ${totalString}`, 10, y_pos); 
+    doc.text(`TOTAL ESTIMATED PRICE (without discount): ${totalString}`, 10, y_pos); 
 
     y_pos += 10;
     doc.setTextColor(0, 0, 0); 
@@ -421,15 +447,12 @@ function handleDiscountCheckbox(checkedElement) {
 }
 
 /**
- * Prefills the Discount Modal with the current estimated price and site type
+ * Prefills the Discount Modal with the current estimated price
  * from the main calculator, if available.
  */
 function prefillDiscountModal() {
     const totalElement = document.getElementById("resultTotal").innerText;
-    const currentSiteType = siteTypeSelect.value;
     const basePriceInput = document.getElementById("basePriceInput");
-    const staticRadio = document.getElementById("modalSiteTypeStatic");
-    const dynamicRadio = document.getElementById("modalSiteTypeDynamic");
     
     // Extract number from "Estimated Price: ₱X,XXX"
     const priceMatch = totalElement.match(/₱([\d,]+)/);
@@ -438,15 +461,9 @@ function prefillDiscountModal() {
     // Set the base price
     basePriceInput.value = estimatedPrice;
 
-    // Set the site type radio button
-    if (currentSiteType === 'dynamic') {
-        dynamicRadio.checked = true;
-    } else {
-        staticRadio.checked = true;
-    }
-    
-    // Update perk description and status immediately (now just updates text)
-    updatePlanADiscountDescription();
+    // Remove the redundant/broken Plan A logic (only affects text now)
+    // The previous updatePlanADiscountDescription and radio button listeners 
+    // are now removed as they referenced non-existent or unnecessary elements.
     
     // Recalculate upon opening the modal if a base price exists
     if (estimatedPrice > 0) {
@@ -458,24 +475,6 @@ function prefillDiscountModal() {
 }
 
 /**
- * Updates the description for Plan A Discount (no longer disables).
- * Rerunning calculateDiscounts is crucial now due to the mutual exclusivity logic.
- */
-function updatePlanADiscountDescription() {
-    // The discount is now available for all site types.
-    const perkDesc = document.getElementById("planADiscountDesc");
-    perkDesc.innerHTML = '<span class="text-success fw-bold">(Plan A Discount: 10% Off)</span>';
-    
-    // Rerun calculation to ensure only one discount is applied correctly after a site type change
-    calculateDiscounts();
-}
-
-// Event listeners for the modal radio buttons to update the perk description (and rerun calc)
-document.getElementById("modalSiteTypeStatic").addEventListener("change", updatePlanADiscountDescription);
-document.getElementById("modalSiteTypeDynamic").addEventListener("change", updatePlanADiscountDescription);
-
-
-/**
  * Calculates the final price based on the estimated price and selected discounts.
  * Uses if/else if structure to ensure only one discount is applied.
  */
@@ -485,7 +484,6 @@ function calculateDiscounts() {
     const isStudent = document.getElementById("studentDiscount").checked;
     const isPlanA = document.getElementById("planADiscount").checked; 
     
-    const selectedCount = isReferral + isStudent + isPlanA;
 
     if (price <= 0) {
         document.getElementById("discountResult").innerText = "Final Price: ₱0";
@@ -538,18 +536,20 @@ function calculateDiscounts() {
     finalPrice = Math.max(0, finalPrice); // Ensure price doesn't go below zero
 
     breakdownHtml += `<li class="list-group-item d-flex justify-content-between fw-bold bg-light mt-2">
-                        <span>Final Price</span>
-                        <span>₱${Math.round(finalPrice).toLocaleString()}</span>
-                      </li>`;
+                         <span>Final Price</span>
+                         <span>₱${Math.round(finalPrice).toLocaleString()}</span>
+                       </li>`;
 
     document.getElementById("discountResult").innerText = `Final Price: ₱${Math.round(finalPrice).toLocaleString()}`;
     document.getElementById("discountBreakdown").innerHTML = breakdownHtml;
 }
 
-
+// --- FIX: The core issue in the JS file was often here. ---
 window.onload = () => {
-    calculatePrice(true);
+    // 1. Initialize the display (required)
+    calculatePrice(true); 
+    // 2. Populate the Pricing Modal (required for the '?' button to show content)
     populatePricingModal();
-    // Pre-populate the modal on load with default 0 price
+    // 3. Pre-populate the discount modal with default 0 price (required)
     prefillDiscountModal(); 
 };
